@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
 <style>
-/* Layout: one compact card sized for a narrow Notion column — label row, big countdown, timeline bar */
+/* Layout: one column sized for a narrow Notion embed — today's countdown on top, this week's log + 40h pace below */
 :root {
   --bg: #ffffff;
   --fg: #23303a;
@@ -21,6 +21,7 @@
   --over: #c4703a;
   --over-soft: #f8e9de;
   --done-soft: #ddf2e8;
+  --today: #f3f8fb;
   --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -29,38 +30,40 @@
   :root:not([data-theme="light"]) {
     --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
     --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f; --done-soft: #1d3329;
+    --today: #1f2427;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
   --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f; --done-soft: #1d3329;
+  --today: #1f2427;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--fg);
   font-family: var(--font-body); font-size: clamp(13px, 3.6vw, 16px);
-  display: flex; align-items: center; justify-content: center;
   padding: 16px 20px;
 }
 .card { container-type: inline-size; width: 100%; display: flex; flex-direction: column; gap: 1.1em; }
 
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .label { font-size: .85em; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-button, select, input { white-space: nowrap; flex-shrink: 0; }
+.controls { display: flex; align-items: center; gap: 6px; min-width: 0; }
+button, select, input { white-space: nowrap; }
 @container (max-width: 340px) {
   .head { flex-direction: column; align-items: stretch; }
-  .controls { flex-wrap: nowrap; }
-  .controls input[type="time"] { flex: 1 1 auto; min-width: 0; flex-shrink: 1; }
+  .controls #start { flex: 1 1 auto; min-width: 0; }
 }
-input[type="time"], select {
+input, select {
   font: 500 .92em var(--font-num); color: var(--fg); background: var(--bg);
   border: 1px solid var(--line); border-radius: 7px; padding: 0 .5em; height: 2.3em;
 }
-input[type="time"]:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+#start { width: 5.6em; }
+input:focus-visible, select:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input::placeholder { color: var(--muted); opacity: .6; }
 button {
   font: 500 .92em var(--font-body); color: var(--accent); background: var(--accent-soft);
   border: 0; border-radius: 7px; padding: 0 .8em; height: 2.3em; cursor: pointer;
@@ -74,7 +77,6 @@ button:hover { filter: brightness(.97); }
 .count small { font-size: .42em; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
 .status { margin-top: .5em; color: var(--muted); font-size: .95em; }
 .status b { color: var(--fg); font-weight: 600; }
-
 
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .actions .q { font-size: .95em; font-weight: 600; margin-right: 2px; }
@@ -94,6 +96,34 @@ button:hover { filter: brightness(.97); }
 .card[data-state="over"] .count, .card[data-state="ext"] .count { color: var(--over); }
 .card[data-state="empty"] .count { color: var(--line); }
 
+/* Weekly log */
+.week { border-top: 1px solid var(--line); padding-top: 1em; display: flex; flex-direction: column; gap: .7em; }
+.wk-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.wk-head .label { flex: 1; }
+.wk-head button { color: var(--muted); background: transparent; padding: 0 .5em; height: 1.9em; }
+.wk-head button:disabled { opacity: .3; cursor: default; }
+.wk-sum { font-size: .95em; line-height: 1.55; color: var(--muted); }
+.wk-sum b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.wk-sum .big { font: 500 1.35em var(--font-num); color: var(--fg); }
+.wk-sum .warn { color: var(--over); }
+.wk-bar { height: 6px; background: var(--track); border-radius: 99px; overflow: hidden; margin-top: .4em; }
+.wk-bar div { height: 100%; background: var(--accent); width: 0; }
+
+.rows { display: flex; flex-direction: column; gap: 2px; }
+.row {
+  display: grid; grid-template-columns: 4.6em minmax(0, 1fr) minmax(0, 1fr) 3.4em; gap: 6px; align-items: center;
+  padding: 3px 4px; border-radius: 7px;
+}
+.row.is-today { background: var(--today); }
+.row select { border-color: transparent; background: transparent; padding: 0 .2em; font-family: var(--font-body); width: 100%; }
+.row select:hover { border-color: var(--line); }
+.row input { width: 100%; min-width: 0; text-align: center; height: 2em; }
+.row input:disabled { opacity: .35; }
+.row .wk { font: .92em var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
+.row .wk.live { color: var(--accent); }
+.row .wk.miss { color: var(--over); }
+.note { font-size: .8em; color: var(--muted); }
+
 @media (prefers-reduced-motion: reduce) { .fill, .fill2 { transition: none; } }
 </style>
 </head>
@@ -102,10 +132,11 @@ button:hover { filter: brightness(.97); }
   <div class="head">
     <span class="label" id="label">퇴근까지</span>
     <div class="controls">
-      <input type="time" id="start" aria-label="출근 시각">
-      <select id="hours" aria-label="근무 시간">
+      <input type="text" id="start" inputmode="numeric" placeholder="09:00" aria-label="출근 시각">
+      <select id="hours" aria-label="오늘 목표">
+        <option value="auto" selected>주40h</option>
         <option value="480">8h</option>
-        <option value="540" selected>9h</option>
+        <option value="540">9h</option>
         <option value="600">10h</option>
       </select>
     </div>
@@ -122,34 +153,209 @@ button:hover { filter: brightness(.97); }
     <div class="bar"><div class="fill" id="fill"></div><div class="fill2" id="fill2"></div></div>
     <div class="ends"><span id="from">출근 --:--</span><span id="to">퇴근 --:--</span></div>
   </div>
+
+  <section class="week" aria-label="주간 기록">
+    <div class="wk-head">
+      <button type="button" id="prev" aria-label="이전 주">‹</button>
+      <span class="label" id="wk-title">이번 주</span>
+      <button type="button" id="next" aria-label="다음 주">›</button>
+    </div>
+    <div class="wk-sum" id="wk-sum"></div>
+    <div class="rows" id="rows"></div>
+    <div class="note">점심 1시간 차감 · 연장 1시간 넘으면 저녁 1시간 추가 차감 · 기록은 이 브라우저에 저장돼요</div>
+  </section>
 </main>
 
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
   const card = $("card"), startEl = $("start"), hoursEl = $("hours"), actions = $("actions");
+  const MIN = 60000, WEEK_TARGET = 40 * 60, DAY_CREDIT = 8 * 60;
   const pad = (n) => String(n).padStart(2, "0");
-  const dayKey = () => { const d = new Date(); return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); };
+  const keyOf = (d) => d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  const todayKey = () => keyOf(new Date());
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
     del(k) { try { localStorage.removeItem(k); } catch (e) {} },
   };
-  // Per-day state: start time, extension minutes, time clocked out
-  const K = { start: () => "lt-start-" + dayKey(), ext: () => "lt-ext-" + dayKey(), off: () => "lt-off-" + dayKey() };
+
+  // One record per day: s = 출근 "HH:MM", e = 퇴근 "HH:MM", x = 연장 minutes, t = work | leave | half | holiday
+  function rec(k) {
+    let r = null;
+    try { r = JSON.parse(store.get("lt-rec-" + k)); } catch (e) {}
+    return Object.assign({ s: "", e: "", x: 0, t: "work" }, r || {});
+  }
+  function save(k, r) { store.set("lt-rec-" + k, JSON.stringify(r)); }
+
+  // Carry over today's entry from the earlier storage format
+  (function migrate() {
+    const k = todayKey(), old = store.get("lt-start-" + k);
+    if (!old) return;
+    const r = rec(k);
+    r.s = r.s || old;
+    r.x = r.x || Number(store.get("lt-ext-" + k) || 0);
+    const off = Number(store.get("lt-off-" + k) || 0);
+    if (off && !r.e) { const d = new Date(off); r.e = pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+    save(k, r);
+    ["lt-start-", "lt-ext-", "lt-off-"].forEach((p) => store.del(p + k));
+  })();
 
   const savedHours = store.get("lt-hours");
-  if (savedHours) hoursEl.value = savedHours;
-  startEl.value = store.get(K.start()) || "";
+  if (savedHours && hoursEl.querySelector('option[value="' + savedHours + '"]')) hoursEl.value = savedHours;
 
+  // "930", "0930", "9:30", "9" -> "09:30" / "09:00"; "" stays ""; anything else -> null
+  function parseHM(v) {
+    v = String(v).trim();
+    if (!v) return "";
+    let h, m;
+    if (/^\d{1,2}:\d{1,2}$/.test(v)) [h, m] = v.split(":").map(Number);
+    else if (/^\d{1,2}$/.test(v)) { h = Number(v); m = 0; }
+    else if (/^\d{3,4}$/.test(v)) { h = Number(v.slice(0, -2)); m = Number(v.slice(-2)); }
+    else return null;
+    return h < 24 && m < 60 ? pad(h) + ":" + pad(m) : null;
+  }
+  const toMin = (hm) => { const [h, m] = hm.split(":").map(Number); return h * 60 + m; };
   const hhmm = (d) => pad(d.getHours()) + ":" + pad(d.getMinutes());
+  const clockOf = (min) => { min = ((Math.round(min) % 1440) + 1440) % 1440; return pad(Math.floor(min / 60)) + ":" + pad(min % 60); };
+  const hm = (min) => { min = Math.round(min); const s = min < 0 ? "-" : ""; min = Math.abs(min); return s + Math.floor(min / 60) + ":" + pad(min % 60); };
+  const dur = (min) => { min = Math.max(0, Math.round(min)); return Math.floor(min / 60) + "시간 " + pad(min % 60) + "분"; };
   const fmt = (ms) => {
     const s = Math.floor(Math.max(0, ms) / 1000);
     return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s / 60) % 60) + "<small>:" + pad(s % 60) + "</small>";
   };
-  const dur = (ms) => { const m = Math.floor(ms / 60000); return Math.floor(m / 60) + "시간 " + pad(m % 60) + "분"; };
 
-  // Rebuild the button row only when its contents change, so clicks aren't lost between ticks
+  // Company rule: lunch 1h off; once overtime past a 9h stay exceeds 1h, dinner 1h off too
+  function workFromStay(stay) {
+    let w = stay;
+    if (stay > 240) w -= 60;
+    if (stay - 540 > 60) w -= 60;
+    return Math.max(0, w);
+  }
+  function stayFromWork(w) {
+    if (w <= 0) return 0;
+    if (w <= 240) return w;
+    const stay = w + 60;
+    return stay - 540 > 60 ? stay + 60 : stay;
+  }
+  function stayOf(r) { let d = toMin(r.e) - toMin(r.s); if (d < 0) d += 1440; return d; }
+  function dayWork(r) {
+    if (r.t === "leave") return DAY_CREDIT;
+    if (r.t === "holiday") return 0;
+    const w = r.s && r.e ? workFromStay(stayOf(r)) : 0;
+    return r.t === "half" ? DAY_CREDIT / 2 + w : w;
+  }
+
+  const mondayOf = (d) => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m; };
+
+  // Weekly pace: hours done so far vs 40h (minus holidays), spread over the work days still open
+  function weekSummary(monday) {
+    const tk = todayKey();
+    let target = WEEK_TARGET, done = 0, open = 0, missing = 0;
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday); d.setDate(d.getDate() + i);
+      const k = keyOf(d), r = rec(k);
+      if (r.t === "holiday") { target -= DAY_CREDIT; continue; }
+      if (r.t === "leave") { done += DAY_CREDIT; continue; }
+      if (r.s && r.e) { done += dayWork(r); continue; }
+      if (r.t === "half") done += DAY_CREDIT / 2;
+      if (k >= tk) open += r.t === "half" ? 0.5 : 1;
+      else missing++;
+    }
+    const need = target - done;
+    return { target, done, open, missing, need, avg: open > 0 ? Math.max(0, need) / open : 0 };
+  }
+
+  // Today's target stay in minutes
+  function todayStay() {
+    if (hoursEl.value !== "auto") return Number(hoursEl.value);
+    const r = rec(todayKey());
+    const sum = weekSummary(mondayOf(new Date()));
+    if (r.t === "leave" || r.t === "holiday") return 0;
+    const w = r.t === "half" ? sum.avg / 2 : sum.avg;
+    return stayFromWork(Math.ceil(w));
+  }
+
+  // ---------- Week table ----------
+  let weekOffset = 0;
+  const DOW = ["월", "화", "수", "목", "금"];
+  const TYPES = [["work", ""], ["leave", "·연차"], ["half", "·반차"], ["holiday", "·휴일"]];
+
+  function renderWeek() {
+    const monday = mondayOf(new Date());
+    monday.setDate(monday.getDate() + weekOffset * 7);
+    const fri = new Date(monday); fri.setDate(fri.getDate() + 4);
+    const md = (d) => (d.getMonth() + 1) + "/" + d.getDate();
+    $("wk-title").textContent = weekOffset === 0 ? "이번 주 " + md(monday) + "–" + md(fri) : md(monday) + "–" + md(fri);
+    $("next").disabled = weekOffset >= 0;
+
+    const tk = todayKey();
+    let html = "";
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday); d.setDate(d.getDate() + i);
+      const k = keyOf(d), r = rec(k);
+      const off = r.t === "leave" || r.t === "holiday";
+      const opts = TYPES.map(([v, suf]) => '<option value="' + v + '"' + (r.t === v ? " selected" : "") + ">" + DOW[i] + " " + d.getDate() + suf + "</option>").join("");
+      let wk = "", cls = "wk";
+      if (r.t === "holiday") wk = "—";
+      else if (r.t === "leave" || (r.s && r.e)) wk = hm(dayWork(r));
+      else if (k === tk && r.s) { cls += " live"; wk = "…"; }
+      else if (k < tk && r.t !== "holiday") { cls += " miss"; wk = r.s ? "퇴근?" : "—"; }
+      html +=
+        '<div class="row' + (k === tk ? " is-today" : "") + '" data-k="' + k + '">' +
+          '<select data-f="t" aria-label="' + DOW[i] + '요일 구분">' + opts + "</select>" +
+          '<input data-f="s" inputmode="numeric" placeholder="출근" value="' + (off ? "" : r.s) + '"' + (off ? " disabled" : "") + ' aria-label="' + DOW[i] + '요일 출근">' +
+          '<input data-f="e" inputmode="numeric" placeholder="퇴근" value="' + (off ? "" : r.e) + '"' + (off ? " disabled" : "") + ' aria-label="' + DOW[i] + '요일 퇴근">' +
+          '<span class="' + cls + '"' + (k === tk ? ' id="today-wk"' : "") + ">" + wk + "</span>" +
+        "</div>";
+    }
+    $("rows").innerHTML = html;
+    renderSummary(monday);
+  }
+
+  function renderSummary(monday) {
+    const s = weekSummary(monday || (() => { const m = mondayOf(new Date()); m.setDate(m.getDate() + weekOffset * 7); return m; })());
+    // Include today's in-progress hours in the running total
+    let live = 0;
+    const tr = rec(todayKey());
+    if (weekOffset === 0 && tr.s && !tr.e && tr.t !== "leave" && tr.t !== "holiday") {
+      let stay = (Date.now() - new Date().setHours(...tr.s.split(":").map(Number), 0, 0)) / MIN;
+      if (stay > 0) live = workFromStay(stay);
+      const cell = $("today-wk");
+      if (cell) cell.textContent = hm(live);
+    }
+    const total = s.done + live;
+    let out = '<span class="big">' + hm(total) + "</span> / " + s.target / 60 + "h";
+    if (s.need <= 0) out += " · <b>이번 주 다 채웠어요</b>";
+    else if (s.open > 0) {
+      const startHM = parseHM(tr.s) || "09:00";
+      const leaveAt = clockOf(toMin(startHM) + stayFromWork(Math.ceil(s.avg)));
+      out += "<br>남은 " + s.open + "일 · 하루 평균 <b>" + dur(s.avg) + "</b> 근무" +
+             "<br>" + startHM + " 출근하면 <b>" + leaveAt + "</b> 퇴근";
+    } else out += " · <b>" + dur(s.need) + "</b> 모자라요";
+    if (s.missing) out += '<br><span class="warn">퇴근 기록이 빠진 날이 ' + s.missing + "일 있어요</span>";
+    out += '<div class="wk-bar"><div style="width:' + Math.min(100, total / Math.max(1, s.target) * 100) + '%"></div></div>';
+    $("wk-sum").innerHTML = out;
+  }
+
+  $("rows").addEventListener("change", (e) => {
+    const el = e.target, row = el.closest(".row");
+    if (!row) return;
+    const k = row.dataset.k, r = rec(k), f = el.dataset.f;
+    if (f === "t") r.t = el.value;
+    else {
+      const v = parseHM(el.value);
+      if (v === null) { el.value = r[f]; return; }
+      r[f] = v;
+    }
+    save(k, r);
+    if (k === todayKey()) startEl.value = r.s;
+    renderWeek(); tick();
+  });
+  $("prev").addEventListener("click", () => { weekOffset--; renderWeek(); });
+  $("next").addEventListener("click", () => { if (weekOffset < 0) { weekOffset++; renderWeek(); } });
+
+  // ---------- Today's countdown ----------
   let shownActions = "";
   function setActions(kind) {
     if (kind === shownActions) return;
@@ -163,52 +369,53 @@ button:hover { filter: brightness(.97); }
            '<button type="button" class="leave" data-act="off">퇴근할래요</button>',
       ext: '<button type="button" class="ext" data-ext="30">+30분 더</button>' +
            '<button type="button" class="leave" data-act="off">지금 퇴근</button>',
+      run: '<button type="button" class="ghost" data-act="off">일찍 퇴근</button>',
       off: '<button type="button" class="ghost" data-act="resume">퇴근 취소</button>',
     }[kind] || "";
   }
   actions.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    const k = todayKey(), r = rec(k);
     if (b.dataset.ext) {
-      // Extend from whichever is later: the current planned end or now (if already past it)
-      const [h, m] = startEl.value.split(":").map(Number);
-      const start = new Date(); start.setHours(h, m, 0, 0);
-      const base = Number(hoursEl.value);
-      const ext = Number(store.get(K.ext()) || 0);
-      const plannedEnd = start.getTime() + (base + ext) * 60000;
-      const from = Math.max(plannedEnd, Date.now());
-      const newExt = Math.ceil((from - start.getTime()) / 60000) - base + Number(b.dataset.ext);
-      store.set(K.ext(), String(newExt));
+      // Extend from whichever is later: the current planned end or now
+      const startMin = toMin(r.s), nowD = new Date(), nowMin = nowD.getHours() * 60 + nowD.getMinutes() + nowD.getSeconds() / 60;
+      const base = todayStay();
+      const from = Math.max(startMin + base + r.x, nowMin);
+      r.x = Math.ceil(from - startMin - base) + Number(b.dataset.ext);
     } else if (b.dataset.act === "off") {
-      store.set(K.off(), String(Date.now()));
+      r.e = hhmm(new Date());
     } else if (b.dataset.act === "resume") {
-      store.del(K.off());
+      r.e = "";
     }
-    tick();
+    save(k, r);
+    renderWeek(); tick();
   });
 
-  let shownDay = dayKey();
+  let shownDay = todayKey();
   function tick() {
-    if (dayKey() !== shownDay) { shownDay = dayKey(); startEl.value = store.get(K.start()) || ""; }
+    if (todayKey() !== shownDay) { shownDay = todayKey(); weekOffset = 0; startEl.value = rec(shownDay).s; renderWeek(); }
+    const r = rec(todayKey());
+    if (document.activeElement !== startEl) startEl.value = r.s;
 
-    const v = startEl.value;
-    if (!v) {
+    if (!r.s || r.t === "leave" || r.t === "holiday") {
       card.dataset.state = "empty";
-      $("label").textContent = "퇴근까지";
+      $("label").textContent = r.t === "leave" ? "오늘은 연차" : r.t === "holiday" ? "오늘은 휴일" : "퇴근까지";
       $("count").innerHTML = "--:--<small>:--</small>";
-      $("status").textContent = "출근 시각을 입력하면 시작돼요";
+      $("status").textContent = r.t === "work" || r.t === "half" ? "출근 시각을 입력하면 시작돼요" : "푹 쉬세요";
       $("fill").style.width = $("fill2").style.width = "0";
       $("from").textContent = "출근 --:--";
       $("to").textContent = "퇴근 --:--";
       setActions("");
+      renderSummary();
       return;
     }
-    const [h, m] = v.split(":").map(Number);
-    const offAt = Number(store.get(K.off()) || 0);
-    const now = offAt ? new Date(offAt) : new Date();
+    const [h, m] = r.s.split(":").map(Number);
     const start = new Date(); start.setHours(h, m, 0, 0);
-    const base = Number(hoursEl.value) * 60000;
-    const ext = Number(store.get(K.ext()) || 0) * 60000;
+    let now = new Date();
+    if (r.e) { const [eh, em] = r.e.split(":").map(Number); now = new Date(); now.setHours(eh, em, 0, 0); if (now < start) now.setDate(now.getDate() + 1); }
+    const base = todayStay() * MIN;
+    const ext = r.x * MIN;
     const baseEnd = new Date(start.getTime() + base);
     const end = new Date(baseEnd.getTime() + ext);
     const worked = now - start;
@@ -216,14 +423,14 @@ button:hover { filter: brightness(.97); }
 
     $("fill").style.width = (Math.min(Math.max(worked, 0), base) / scale * 100) + "%";
     $("fill2").style.width = (Math.max(0, worked - base) / scale * 100) + "%";
-    $("from").textContent = "출근 " + v;
+    $("from").textContent = "출근 " + r.s;
     $("to").textContent = ext ? "연장 " + hhmm(end) : "퇴근 " + hhmm(baseEnd);
 
-    if (offAt) {
+    if (r.e) {
       card.dataset.state = "off";
       $("label").textContent = "퇴근 완료";
       $("count").innerHTML = fmt(worked);
-      $("status").innerHTML = "<b>" + hhmm(now) + "</b> 퇴근" + (worked > base ? " · 연장 " + dur(worked - base) : "") + " · 수고했어요";
+      $("status").innerHTML = "<b>" + r.e + "</b> 퇴근 · 근무 " + dur(workFromStay(worked / MIN)) + " · 수고했어요";
       setActions("off");
     } else if (now < start) {
       card.dataset.state = "empty";
@@ -235,15 +442,16 @@ button:hover { filter: brightness(.97); }
       card.dataset.state = "running";
       $("label").textContent = "퇴근까지";
       $("count").innerHTML = fmt(baseEnd - now);
-      $("status").innerHTML = "<b>" + Math.floor(worked / base * 100) + "%</b> 근무 완료";
-      setActions("");
+      $("status").innerHTML = "<b>" + Math.floor(worked / base * 100) + "%</b> · " +
+        (hoursEl.value === "auto" ? "주 40시간 페이스 기준" : "체류 " + dur(base / MIN) + " 기준");
+      setActions("run");
     } else if (now < end) {
       card.dataset.state = "ext";
       $("label").textContent = "연장근무 중";
       $("count").innerHTML = fmt(end - now);
-      $("status").innerHTML = "<b>" + hhmm(end) + "</b>까지 · 지금까지 연장 " + dur(worked - base);
+      $("status").innerHTML = "<b>" + hhmm(end) + "</b>까지 · 지금까지 연장 " + dur((worked - base) / MIN);
       setActions("ext");
-    } else if (!ext && now - baseEnd < 10 * 60000) {
+    } else if (!ext && now - baseEnd < 10 * MIN) {
       card.dataset.state = "done";
       $("label").textContent = "퇴근 시간";
       $("count").innerHTML = fmt(now - baseEnd);
@@ -253,14 +461,23 @@ button:hover { filter: brightness(.97); }
       card.dataset.state = "over";
       $("label").textContent = ext ? "연장 시간 초과" : "초과 근무";
       $("count").innerHTML = "+" + fmt(now - end);
-      $("status").innerHTML = "<b>" + hhmm(end) + "</b>부터 초과 · 연장 총 " + dur(worked - base);
+      $("status").innerHTML = "<b>" + hhmm(end) + "</b>부터 초과 · 연장 총 " + dur((worked - base) / MIN);
       setActions("ask");
     }
+    renderSummary();
   }
 
-  startEl.addEventListener("input", () => { store.set(K.start(), startEl.value); tick(); });
+  startEl.addEventListener("change", () => {
+    const v = parseHM(startEl.value), k = todayKey(), r = rec(k);
+    if (v === null) { startEl.value = r.s; return; }
+    r.s = v; startEl.value = v;
+    save(k, r);
+    renderWeek(); tick();
+  });
   hoursEl.addEventListener("change", () => { store.set("lt-hours", hoursEl.value); tick(); });
 
+  startEl.value = rec(todayKey()).s;
+  renderWeek();
   tick();
   setInterval(tick, 1000);
 })();
