@@ -45,10 +45,10 @@
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--fg);
-  font-family: var(--font-body); font-size: clamp(13px, 3.6vw, 16px);
+  font-family: var(--font-body); font-size: clamp(13px, 3.4vw, 14.5px);
   padding: 16px 20px;
 }
-.card { container-type: inline-size; width: 100%; display: flex; flex-direction: column; gap: 1.1em; }
+.card { container-type: inline-size; width: 100%; max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.1em; }
 
 .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .label { font-size: .85em; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
@@ -72,7 +72,7 @@ button {
 button:hover { filter: brightness(.97); }
 
 .count {
-  font-family: var(--font-num); font-weight: 500; font-size: clamp(40px, 16vw, 76px);
+  font-family: var(--font-num); font-weight: 500; font-size: clamp(36px, 13vw, 54px);
   line-height: 1; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
 }
 .count small { font-size: .42em; color: var(--muted); letter-spacing: 0; margin-left: 2px; }
