@@ -19,6 +19,8 @@
   --accent-soft: #d9ecf5;
   --done: #2f9e6e;
   --over: #c4703a;
+  --over-soft: #f8e9de;
+  --done-soft: #ddf2e8;
   --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -26,13 +28,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
-    --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662;
+    --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f; --done-soft: #1d3329;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
-  --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662;
+  --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f; --done-soft: #1d3329;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -67,18 +69,26 @@ button:hover { filter: brightness(.97); }
 .status { margin-top: 6px; color: var(--muted); font-size: 12px; }
 .status b { color: var(--fg); font-weight: 600; }
 
-.bar { height: 8px; background: var(--track); border-radius: 99px; overflow: hidden; }
-.fill { height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .6s ease; }
+
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.actions .q { font-size: 12px; font-weight: 600; margin-right: 2px; }
+.actions .ext { color: var(--over); background: var(--over-soft); }
+.actions .leave { color: var(--done); background: var(--done-soft); }
+.actions .ghost { color: var(--muted); background: transparent; border: 1px solid var(--line); }
+
+.bar { height: 8px; background: var(--track); border-radius: 99px; overflow: hidden; display: flex; }
+.fill, .fill2 { height: 100%; width: 0; transition: width .6s ease; }
+.fill { background: var(--accent); }
+.fill2 { background: var(--over); }
 .ends { display: flex; justify-content: space-between; margin-top: 6px; font: 12px var(--font-num); color: var(--muted); font-variant-numeric: tabular-nums; }
 .ends span:last-child { color: var(--fg); font-weight: 500; }
 
 .card[data-state="done"] .fill { background: var(--done); }
-.card[data-state="done"] .count { color: var(--done); }
-.card[data-state="over"] .fill { background: var(--over); }
-.card[data-state="over"] .count { color: var(--over); }
+.card[data-state="done"] .count, .card[data-state="off"] .count { color: var(--done); }
+.card[data-state="over"] .count, .card[data-state="ext"] .count { color: var(--over); }
 .card[data-state="empty"] .count { color: var(--line); }
 
-@media (prefers-reduced-motion: reduce) { .fill { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .fill, .fill2 { transition: none; } }
 </style>
 </head>
 <body>
@@ -101,8 +111,10 @@ button:hover { filter: brightness(.97); }
     <div class="status" id="status">출근 시각을 입력하면 시작돼요</div>
   </div>
 
+  <div class="actions" id="actions" hidden></div>
+
   <div>
-    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="bar"><div class="fill" id="fill"></div><div class="fill2" id="fill2"></div></div>
     <div class="ends"><span id="from">출근 --:--</span><span id="to">퇴근 --:--</span></div>
   </div>
 </main>
@@ -110,30 +122,69 @@ button:hover { filter: brightness(.97); }
 <script>
 (function () {
   const $ = (id) => document.getElementById(id);
-  const card = $("card"), startEl = $("start"), hoursEl = $("hours");
+  const card = $("card"), startEl = $("start"), hoursEl = $("hours"), actions = $("actions");
   const pad = (n) => String(n).padStart(2, "0");
-  const todayKey = () => { const d = new Date(); return "lt-start-" + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); };
+  const dayKey = () => { const d = new Date(); return d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()); };
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} },
   };
+  // Per-day state: start time, extension minutes, time clocked out
+  const K = { start: () => "lt-start-" + dayKey(), ext: () => "lt-ext-" + dayKey(), off: () => "lt-off-" + dayKey() };
 
-  // Restore today's start time and the saved work-hours choice
   const savedHours = store.get("lt-hours");
   if (savedHours) hoursEl.value = savedHours;
-  const savedStart = store.get(todayKey());
-  if (savedStart) startEl.value = savedStart;
+  startEl.value = store.get(K.start()) || "";
 
   const hhmm = (d) => pad(d.getHours()) + ":" + pad(d.getMinutes());
   const fmt = (ms) => {
-    const s = Math.floor(ms / 1000);
+    const s = Math.floor(Math.max(0, ms) / 1000);
     return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s / 60) % 60) + "<small>:" + pad(s % 60) + "</small>";
   };
+  const dur = (ms) => { const m = Math.floor(ms / 60000); return Math.floor(m / 60) + "시간 " + pad(m % 60) + "분"; };
 
-  let shownKey = todayKey();
+  // Rebuild the button row only when its contents change, so clicks aren't lost between ticks
+  let shownActions = "";
+  function setActions(kind) {
+    if (kind === shownActions) return;
+    shownActions = kind;
+    actions.hidden = !kind;
+    actions.innerHTML = {
+      ask: '<span class="q">연장근무 할까요?</span>' +
+           '<button type="button" class="ext" data-ext="30">+30분</button>' +
+           '<button type="button" class="ext" data-ext="60">+1시간</button>' +
+           '<button type="button" class="ext" data-ext="120">+2시간</button>' +
+           '<button type="button" class="leave" data-act="off">퇴근할래요</button>',
+      ext: '<button type="button" class="ext" data-ext="30">+30분 더</button>' +
+           '<button type="button" class="leave" data-act="off">지금 퇴근</button>',
+      off: '<button type="button" class="ghost" data-act="resume">퇴근 취소</button>',
+    }[kind] || "";
+  }
+  actions.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.ext) {
+      // Extend from whichever is later: the current planned end or now (if already past it)
+      const [h, m] = startEl.value.split(":").map(Number);
+      const start = new Date(); start.setHours(h, m, 0, 0);
+      const base = Number(hoursEl.value);
+      const ext = Number(store.get(K.ext()) || 0);
+      const plannedEnd = start.getTime() + (base + ext) * 60000;
+      const from = Math.max(plannedEnd, Date.now());
+      const newExt = Math.ceil((from - start.getTime()) / 60000) - base + Number(b.dataset.ext);
+      store.set(K.ext(), String(newExt));
+    } else if (b.dataset.act === "off") {
+      store.set(K.off(), String(Date.now()));
+    } else if (b.dataset.act === "resume") {
+      store.del(K.off());
+    }
+    tick();
+  });
+
+  let shownDay = dayKey();
   function tick() {
-    // New day: clear yesterday's entry from the input
-    if (todayKey() !== shownKey) { shownKey = todayKey(); startEl.value = store.get(shownKey) || ""; }
+    if (dayKey() !== shownDay) { shownDay = dayKey(); startEl.value = store.get(K.start()) || ""; }
 
     const v = startEl.value;
     if (!v) {
@@ -141,51 +192,73 @@ button:hover { filter: brightness(.97); }
       $("label").textContent = "퇴근까지";
       $("count").innerHTML = "--:--<small>:--</small>";
       $("status").textContent = "출근 시각을 입력하면 시작돼요";
-      $("fill").style.width = "0";
+      $("fill").style.width = $("fill2").style.width = "0";
       $("from").textContent = "출근 --:--";
       $("to").textContent = "퇴근 --:--";
+      setActions("");
       return;
     }
     const [h, m] = v.split(":").map(Number);
-    const now = new Date();
-    const start = new Date(now); start.setHours(h, m, 0, 0);
-    const total = Number(hoursEl.value) * 60000;
-    const end = new Date(start.getTime() + total);
-    const left = end - now;
-    const pct = Math.min(100, Math.max(0, ((now - start) / total) * 100));
+    const offAt = Number(store.get(K.off()) || 0);
+    const now = offAt ? new Date(offAt) : new Date();
+    const start = new Date(); start.setHours(h, m, 0, 0);
+    const base = Number(hoursEl.value) * 60000;
+    const ext = Number(store.get(K.ext()) || 0) * 60000;
+    const baseEnd = new Date(start.getTime() + base);
+    const end = new Date(baseEnd.getTime() + ext);
+    const worked = now - start;
+    const scale = Math.max(base + ext, worked, 1);
 
+    $("fill").style.width = (Math.min(Math.max(worked, 0), base) / scale * 100) + "%";
+    $("fill2").style.width = (Math.max(0, worked - base) / scale * 100) + "%";
     $("from").textContent = "출근 " + v;
-    $("to").textContent = "퇴근 " + hhmm(end);
-    $("fill").style.width = pct + "%";
+    $("to").textContent = ext ? "연장 " + hhmm(end) : "퇴근 " + hhmm(baseEnd);
 
-    if (now < start) {
+    if (offAt) {
+      card.dataset.state = "off";
+      $("label").textContent = "퇴근 완료";
+      $("count").innerHTML = fmt(worked);
+      $("status").innerHTML = "<b>" + hhmm(now) + "</b> 퇴근" + (worked > base ? " · 연장 " + dur(worked - base) : "") + " · 수고했어요";
+      setActions("off");
+    } else if (now < start) {
       card.dataset.state = "empty";
       $("label").textContent = "출근 전";
       $("count").innerHTML = fmt(start - now);
       $("status").textContent = "출근 시각까지 남은 시간";
-    } else if (left > 0) {
+      setActions("");
+    } else if (now < baseEnd) {
       card.dataset.state = "running";
       $("label").textContent = "퇴근까지";
-      $("count").innerHTML = fmt(left);
-      $("status").innerHTML = "<b>" + Math.floor(pct) + "%</b> 근무 완료";
-    } else if (-left < 60000 * 10) {
+      $("count").innerHTML = fmt(baseEnd - now);
+      $("status").innerHTML = "<b>" + Math.floor(worked / base * 100) + "%</b> 근무 완료";
+      setActions("");
+    } else if (now < end) {
+      card.dataset.state = "ext";
+      $("label").textContent = "연장근무 중";
+      $("count").innerHTML = fmt(end - now);
+      $("status").innerHTML = "<b>" + hhmm(end) + "</b>까지 · 지금까지 연장 " + dur(worked - base);
+      setActions("ext");
+    } else if (!ext && now - baseEnd < 10 * 60000) {
       card.dataset.state = "done";
       $("label").textContent = "퇴근 시간";
-      $("count").innerHTML = fmt(-left);
-      $("status").innerHTML = "<b>퇴근하세요!</b> 오늘도 수고했어요";
+      $("count").innerHTML = fmt(now - baseEnd);
+      $("status").innerHTML = "<b>퇴근 시간이에요</b> · 오늘도 수고했어요";
+      setActions("ask");
     } else {
       card.dataset.state = "over";
-      $("label").textContent = "초과 근무";
-      $("count").innerHTML = "+" + fmt(-left);
-      $("status").innerHTML = "<b>" + hhmm(end) + "</b>부터 초과 중";
+      $("label").textContent = ext ? "연장 시간 초과" : "초과 근무";
+      $("count").innerHTML = "+" + fmt(now - end);
+      $("status").innerHTML = "<b>" + hhmm(end) + "</b>부터 초과 · 연장 총 " + dur(worked - base);
+      setActions("ask");
     }
   }
 
-  startEl.addEventListener("input", () => { store.set(todayKey(), startEl.value); tick(); });
+  startEl.addEventListener("input", () => { store.set(K.start(), startEl.value); tick(); });
   hoursEl.addEventListener("change", () => { store.set("lt-hours", hoursEl.value); tick(); });
   $("now").addEventListener("click", () => {
     startEl.value = hhmm(new Date());
-    store.set(todayKey(), startEl.value);
+    store.set(K.start(), startEl.value);
+    store.del(K.ext()); store.del(K.off());
     tick();
   });
 
