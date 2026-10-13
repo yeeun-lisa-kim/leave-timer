@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>오늘 브리핑</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column for a narrow Notion embed — date + clock, weather line, today's meetings as a time list */
+:root {
+  --bg: #ffffff;
+  --fg: #23303a;
+  --muted: #7d8b96;
+  --line: #e3eaef;
+  --track: #edf2f6;
+  --accent: #3f8fb5;
+  --accent-soft: #d9ecf5;
+  --done: #2f9e6e;
+  --over: #c4703a;
+  --over-soft: #f8e9de;
+  --sun: #e0a030;
+  --now: #f3f8fb;
+  --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
+    --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f;
+    --sun: #f0bc55; --now: #1f2427;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
+  --accent: #6cb6d8; --accent-soft: #1f3540; --done: #5cc497; --over: #e09662; --over-soft: #3a2a1f;
+  --sun: #f0bc55; --now: #1f2427;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: clamp(13px, 3.6vw, 16px);
+  padding: 16px 20px;
+}
+.card { width: 100%; display: flex; flex-direction: column; gap: 1.1em; }
+.label { font-size: .85em; font-weight: 600; letter-spacing: .08em; color: var(--muted); }
+button {
+  font: 500 .92em var(--font-body); color: var(--accent); background: var(--accent-soft);
+  border: 0; border-radius: 7px; padding: 0 .8em; height: 2.3em; cursor: pointer; white-space: nowrap;
+}
+button.ghost { color: var(--muted); background: transparent; border: 1px solid var(--line); height: 1.9em; padding: 0 .6em; }
+button.link { background: none; color: var(--muted); padding: 0; height: auto; font-size: .85em; text-decoration: underline dotted; text-underline-offset: 3px; }
+input {
+  font: 500 .85em var(--font-body); color: var(--fg); background: var(--bg);
+  border: 1px solid var(--line); border-radius: 7px; padding: 0 .5em; height: 2.3em; flex: 1; min-width: 0;
+}
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.form { display: flex; gap: 6px; }
+
+/* Date */
+.date { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.date h1 { margin: 0; font-weight: 600; font-size: clamp(26px, 9vw, 40px); line-height: 1.05; letter-spacing: -.02em; }
+.date h1 span { display: block; font-size: .45em; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-top: .35em; }
+.clock { font: 500 clamp(20px, 7vw, 30px) var(--font-num); font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* Weather */
+.weather { display: flex; align-items: center; gap: .9em; }
+.weather svg { width: 2.8em; height: 2.8em; flex: none; }
+.w-temp { font: 500 2em var(--font-num); line-height: 1; }
+.w-text { display: flex; flex-direction: column; gap: .2em; min-width: 0; font-size: .92em; color: var(--muted); }
+.w-text b { color: var(--fg); font-weight: 600; }
+.w-text .num { font-variant-numeric: tabular-nums; }
+input::placeholder { color: var(--muted); opacity: .6; }
+#cal-connect .empty { padding-left: 0; }
+
+/* Meetings */
+.meet { border-top: 1px solid var(--line); padding-top: 1em; display: flex; flex-direction: column; gap: .6em; }
+.meet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.next { font-size: .92em; color: var(--muted); }
+.next b { color: var(--fg); }
+.list { display: flex; flex-direction: column; gap: 2px; }
+.ev { display: grid; grid-template-columns: 6.6em minmax(0, 1fr); gap: 8px; padding: .45em .4em; border-radius: 7px; align-items: baseline; }
+.ev .t { font: .88em var(--font-num); color: var(--muted); font-variant-numeric: tabular-nums; }
+.ev .ti { min-width: 0; overflow-wrap: anywhere; }
+.ev .ti small { display: block; color: var(--muted); font-size: .82em; margin-top: .15em; }
+.ev.past { opacity: .45; }
+.ev.now { background: var(--now); }
+.ev.now .t { color: var(--accent); font-weight: 500; }
+.pill { display: inline-block; font-size: .72em; font-weight: 600; padding: .1em .5em; border-radius: 99px; margin-left: .4em; vertical-align: .1em; }
+.pill.on { color: var(--accent); background: var(--accent-soft); }
+.pill.soon { color: var(--over); background: var(--over-soft); }
+.empty { color: var(--muted); font-size: .92em; padding: .3em .4em; }
+.err { color: var(--over); }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="date">
+    <h1 id="date">10월 13일<span>화요일</span></h1>
+    <div class="clock" id="clock">--:--</div>
+  </div>
+
+  <div>
+    <div class="weather" id="weather">
+      <svg id="w-icon" viewBox="0 0 48 48" aria-hidden="true"></svg>
+      <div class="w-temp" id="w-temp">--°</div>
+      <div class="w-text">
+        <span id="w-desc">날씨 불러오는 중…</span>
+        <span id="w-range" class="num"></span>
+      </div>
+    </div>
+    <div style="margin-top:.5em"><button type="button" class="link" id="city-edit">서울</button></div>
+    <form class="form" id="city-form" hidden style="margin-top:.5em">
+      <input id="city-input" placeholder="도시 이름 (예: 판교, Busan)" aria-label="도시 이름">
+      <button type="submit">바꾸기</button>
+    </form>
+  </div>
+
+  <section class="meet" aria-label="오늘 회의">
+    <div class="meet-head">
+      <span class="label" id="meet-label">오늘 회의</span>
+      <span class="next" id="next"></span>
+    </div>
+    <div class="list" id="list"><div class="empty">일정 불러오는 중…</div></div>
+    <div id="cal-connect" hidden>
+      <div class="empty">캘린더가 연결되지 않았어요. 출퇴근 기록 시트의 Apps Script 웹 앱 URL을 넣어 주세요.</div>
+      <form class="form" id="cal-form">
+        <input type="url" id="cal-url" placeholder="https://script.google.com/…/exec" aria-label="Apps Script 웹 앱 URL">
+        <button type="submit">연결</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const pad = (n) => String(n).padStart(2, "0");
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const DOW = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+  const hhmm = (d) => pad(d.getHours()) + ":" + pad(d.getMinutes());
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  // ---------- Date & clock ----------
+  let shownDay = "";
+  function tickClock() {
+    const d = new Date();
+    $("clock").textContent = hhmm(d);
+    const key = d.toDateString();
+    if (key !== shownDay) {
+      const rollover = shownDay !== "";
+      shownDay = key;
+      $("date").innerHTML = (d.getMonth() + 1) + "월 " + d.getDate() + "일<span>" + d.getFullYear() + " · " + DOW[d.getDay()] + "</span>";
+      if (rollover) { loadWeather(); loadEvents(); }
+    }
+    renderEvents();
+  }
+
+  // ---------- Weather (Open-Meteo, no key) ----------
+  let city = { name: "서울", lat: 37.5665, lon: 126.978 };
+  try { city = JSON.parse(store.get("tb-city")) || city; } catch (e) {}
+  $("city-edit").textContent = city.name + " 날씨 · 지역 바꾸기";
+
+  const ICONS = {
+    sun: '<circle cx="24" cy="24" r="8" fill="var(--sun)"/><g stroke="var(--sun)" stroke-width="3" stroke-linecap="round"><path d="M24 6v5M24 37v5M6 24h5M37 24h5M11.3 11.3l3.5 3.5M33.2 33.2l3.5 3.5M11.3 36.7l3.5-3.5M33.2 14.8l3.5-3.5"/></g>',
+    part: '<circle cx="18" cy="17" r="7" fill="var(--sun)"/><path d="M16 38h20a8 8 0 0 0 0-16 11 11 0 0 0-21 3 6.5 6.5 0 0 0 1 13z" fill="var(--track)" stroke="var(--muted)" stroke-width="2"/>',
+    cloud: '<path d="M14 36h22a9 9 0 0 0 0-18 12 12 0 0 0-23 3.5A7.3 7.3 0 0 0 14 36z" fill="var(--track)" stroke="var(--muted)" stroke-width="2"/>',
+    rain: '<path d="M14 30h22a8 8 0 0 0 0-16 11 11 0 0 0-21 3 6.5 6.5 0 0 0-1 13z" fill="var(--track)" stroke="var(--muted)" stroke-width="2"/><g stroke="var(--accent)" stroke-width="2.5" stroke-linecap="round"><path d="M17 35l-2 5M25 35l-2 5M33 35l-2 5"/></g>',
+    snow: '<path d="M14 30h22a8 8 0 0 0 0-16 11 11 0 0 0-21 3 6.5 6.5 0 0 0-1 13z" fill="var(--track)" stroke="var(--muted)" stroke-width="2"/><g fill="var(--accent)"><circle cx="16" cy="37" r="2"/><circle cx="24" cy="40" r="2"/><circle cx="32" cy="37" r="2"/></g>',
+    fog: '<g stroke="var(--muted)" stroke-width="3" stroke-linecap="round"><path d="M9 18h30M6 26h36M11 34h26"/></g>',
+    storm: '<path d="M14 28h22a8 8 0 0 0 0-16 11 11 0 0 0-21 3 6.5 6.5 0 0 0-1 13z" fill="var(--track)" stroke="var(--muted)" stroke-width="2"/><path d="M25 30l-5 8h5l-3 7 8-10h-5l3-5z" fill="var(--sun)"/>',
+  };
+  function describe(code) {
+    if (code === 0) return ["맑음", "sun"];
+    if (code <= 2) return ["구름 조금", "part"];
+    if (code === 3) return ["흐림", "cloud"];
+    if (code === 45 || code === 48) return ["안개", "fog"];
+    if (code >= 51 && code <= 57) return ["이슬비", "rain"];
+    if (code >= 61 && code <= 67) return ["비", "rain"];
+    if (code >= 71 && code <= 77) return ["눈", "snow"];
+    if (code >= 80 && code <= 82) return ["소나기", "rain"];
+    if (code === 85 || code === 86) return ["눈 소나기", "snow"];
+    if (code >= 95) return ["뇌우", "storm"];
+    return ["", "cloud"];
+  }
+  async function loadWeather() {
+    try {
+      const u = "https://api.open-meteo.com/v1/forecast?latitude=" + city.lat + "&longitude=" + city.lon +
+        "&current=temperature_2m,apparent_temperature,weather_code" +
+        "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max" +
+        "&timezone=auto&forecast_days=1";
+      const j = await (await fetch(u)).json();
+      const [desc, icon] = describe(j.current.weather_code);
+      $("w-icon").innerHTML = ICONS[icon];
+      $("w-temp").textContent = Math.round(j.current.temperature_2m) + "°";
+      $("w-desc").innerHTML = "<b>" + desc + "</b> · 체감 " + Math.round(j.current.apparent_temperature) + "°";
+      $("w-range").textContent = "최고 " + Math.round(j.daily.temperature_2m_max[0]) + "° 최저 " + Math.round(j.daily.temperature_2m_min[0]) +
+        "° · 강수 " + (j.daily.precipitation_probability_max[0] ?? 0) + "%";
+    } catch (e) {
+      $("w-desc").innerHTML = '<span class="err">날씨를 불러오지 못했어요</span>';
+    }
+  }
+  $("city-edit").addEventListener("click", () => { const f = $("city-form"); f.hidden = !f.hidden; if (!f.hidden) $("city-input").focus(); });
+  $("city-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const q = $("city-input").value.trim();
+    if (!q) return;
+    try {
+      const j = await (await fetch("https://geocoding-api.open-meteo.com/v1/search?count=1&language=ko&name=" + encodeURIComponent(q))).json();
+      const r = j.results && j.results[0];
+      if (!r) { $("city-input").value = ""; $("city-input").placeholder = "'" + q + "'을(를) 찾지 못했어요"; return; }
+      city = { name: r.name, lat: r.latitude, lon: r.longitude };
+      store.set("tb-city", JSON.stringify(city));
+      $("city-edit").textContent = city.name + " 날씨 · 지역 바꾸기";
+      $("city-form").hidden = true;
+      loadWeather();
+    } catch (err) { $("city-input").placeholder = "검색에 실패했어요. 다시 시도해 주세요"; }
+  });
+
+  // ---------- Meetings (Apps Script → Google Calendar) ----------
+  let events = null, evError = false;
+  async function loadEvents() {
+    const url = store.get("lt-sync");
+    $("cal-connect").hidden = !!url;
+    if (!url) { events = null; $("list").innerHTML = ""; $("next").textContent = ""; return; }
+    try {
+      const j = await (await fetch(url + "?action=events")).json();
+      if (!j.ok || !Array.isArray(j.events)) throw new Error();
+      events = j.events; evError = false;
+    } catch (e) { evError = true; }
+    renderEvents();
+  }
+  let lastHtml = "";
+  function renderEvents() {
+    if (!store.get("lt-sync")) return;
+    if (evError && !events) { $("list").innerHTML = '<div class="empty err">일정을 불러오지 못했어요. Apps Script를 새 버전으로 배포했는지 확인해 주세요.</div>'; return; }
+    if (!events) return;
+    const now = Date.now();
+    const timed = events.filter((e) => !e.allDay);
+    const upcoming = timed.find((e) => new Date(e.start) > now);
+    const current = timed.filter((e) => new Date(e.start) <= now && new Date(e.end) > now);
+    $("meet-label").textContent = "오늘 회의 " + timed.length + "건";
+
+    let next = "";
+    if (current.length) next = "<b>" + esc(current[0].title) + "</b> 진행 중";
+    else if (upcoming) {
+      const min = Math.ceil((new Date(upcoming.start) - now) / 60000);
+      next = "다음 회의까지 <b>" + (min >= 60 ? Math.floor(min / 60) + "시간 " + (min % 60) + "분" : min + "분") + "</b>";
+    } else if (timed.length) next = "오늘 회의 끝";
+    $("next").innerHTML = next;
+
+    let html = "";
+    if (!events.length) html = '<div class="empty">오늘은 회의가 없어요</div>';
+    events.forEach((e) => {
+      const s = new Date(e.start), en = new Date(e.end);
+      let cls = "ev", pill = "";
+      if (!e.allDay) {
+        if (en <= now) cls += " past";
+        else if (s <= now) { cls += " now"; pill = '<span class="pill on">진행 중</span>'; }
+        else if (e === upcoming && s - now <= 15 * 60000) pill = '<span class="pill soon">곧 시작</span>';
+      }
+      html += '<div class="' + cls + '"><span class="t">' + (e.allDay ? "종일" : hhmm(s) + "–" + hhmm(en)) + "</span>" +
+        '<span class="ti">' + esc(e.title) + pill + (e.location ? "<small>" + esc(e.location) + "</small>" : "") + "</span></div>";
+    });
+    if (html !== lastHtml) { $("list").innerHTML = html; lastHtml = html; }
+  }
+  $("cal-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const u = $("cal-url").value.trim();
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) { $("cal-url").value = ""; $("cal-url").placeholder = "…/exec 로 끝나는 URL을 넣어 주세요"; return; }
+    store.set("lt-sync", u);
+    loadEvents();
+  });
+
+  tickClock();
+  loadWeather();
+  loadEvents();
+  setInterval(tickClock, 15000);
+  setInterval(loadWeather, 30 * 60000);
+  setInterval(loadEvents, 5 * 60000);
+})();
+</script>
+</body>
+</html>

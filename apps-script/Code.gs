@@ -19,8 +19,25 @@ function dates_(sh) {
   return n > 0 ? sh.getRange(2, 1, n, 1).getDisplayValues().map((r) => r[0]) : [];
 }
 
-// 전체 기록을 돌려준다: [{d: "2026-10-13", t: "work", s: "09:30", e: "18:40"}, ...]
-function doGet() {
+// 오늘 캘린더 일정을 돌려준다 (내가 거절한 일정은 뺀다)
+function events_() {
+  const events = CalendarApp.getDefaultCalendar().getEventsForDay(new Date())
+    .filter((ev) => ev.getMyStatus() !== CalendarApp.GuestStatus.NO)
+    .map((ev) => ({
+      title: ev.getTitle() || '(제목 없음)',
+      start: ev.getStartTime().toISOString(),
+      end: ev.getEndTime().toISOString(),
+      allDay: ev.isAllDayEvent(),
+      location: ev.getLocation() || '',
+    }))
+    .sort((a, b) => (a.allDay === b.allDay ? a.start.localeCompare(b.start) : a.allDay ? -1 : 1));
+  return json_({ ok: true, events });
+}
+
+// 기본: 전체 기록을 돌려준다 [{d: "2026-10-13", t: "work", s: "09:30", e: "18:40"}, ...]
+// ?action=events: 오늘 캘린더 일정
+function doGet(e) {
+  if (e && e.parameter && e.parameter.action === 'events') return events_();
   const sh = sheet_();
   const n = sh.getLastRow() - 1;
   const rows = n > 0 ? sh.getRange(2, 1, n, 5).getDisplayValues() : [];
