@@ -41,6 +41,7 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
   background: var(--bg); color: var(--fg);
@@ -122,7 +123,15 @@ button:hover { filter: brightness(.97); }
 .row .wk { font: .92em var(--font-num); text-align: right; font-variant-numeric: tabular-nums; }
 .row .wk.live { color: var(--accent); }
 .row .wk.miss { color: var(--over); }
-.note { font-size: .8em; color: var(--muted); }
+.note { font-size: .8em; color: var(--muted); line-height: 1.5; }
+.sync { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: .85em; color: var(--muted); }
+.sync .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); flex: none; }
+.sync[data-s="ok"] .dot { background: var(--done); }
+.sync[data-s="busy"] .dot { background: var(--accent); }
+.sync[data-s="err"] .dot { background: var(--over); }
+.sync button { height: 1.9em; padding: 0 .6em; font-size: .95em; }
+.sync-form { display: flex; gap: 6px; }
+.sync-form input { flex: 1; min-width: 0; font-family: var(--font-body); font-size: .85em; }
 
 @media (prefers-reduced-motion: reduce) { .fill, .fill2 { transition: none; } }
 </style>
@@ -162,7 +171,12 @@ button:hover { filter: brightness(.97); }
     </div>
     <div class="wk-sum" id="wk-sum"></div>
     <div class="rows" id="rows"></div>
-    <div class="note">점심 1시간 차감 · 연장 1시간 넘으면 저녁 1시간 추가 차감 · 기록은 이 브라우저에 저장돼요</div>
+    <div class="sync" id="sync" data-s="off"><span class="dot"></span><span id="sync-msg">시트에 연결되지 않았어요</span><button type="button" class="ghost" id="sync-edit">시트 연결</button></div>
+    <form class="sync-form" id="sync-form" hidden>
+      <input type="url" id="sync-url" placeholder="Apps Script 웹 앱 URL (https://script.google.com/…/exec)" aria-label="Apps Script 웹 앱 URL">
+      <button type="submit">저장</button>
+    </form>
+    <div class="note">점심 1시간 차감 · 연장 1시간 넘으면 저녁 1시간 추가 차감</div>
   </section>
 </main>
 
@@ -186,7 +200,85 @@ button:hover { filter: brightness(.97); }
     try { r = JSON.parse(store.get("lt-rec-" + k)); } catch (e) {}
     return Object.assign({ s: "", e: "", x: 0, t: "work" }, r || {});
   }
-  function save(k, r) { store.set("lt-rec-" + k, JSON.stringify(r)); }
+  function save(k, r) { store.set("lt-rec-" + k, JSON.stringify(r)); sync.queue(k); }
+
+  // ---------- Google Sheets sync (Apps Script web app) ----------
+  const sync = (function () {
+    const el = () => $("sync");
+    let url = store.get("lt-sync") || "";
+    let pending = [];
+    try { pending = JSON.parse(store.get("lt-pending")) || []; } catch (e) {}
+    let busy = false, timer = 0;
+    const isoOf = (k) => k.slice(0, 4) + "-" + k.slice(4, 6) + "-" + k.slice(6, 8);
+    const savePending = () => store.set("lt-pending", JSON.stringify(pending));
+    function show(state, msg) {
+      if (!el()) return;
+      el().dataset.s = state;
+      $("sync-msg").textContent = msg;
+      $("sync-edit").textContent = url ? "변경" : "시트 연결";
+    }
+    function stamp() { const d = new Date(); return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+
+    async function flush() {
+      if (!url || busy || !pending.length) return;
+      busy = true; show("busy", "시트에 저장하는 중…");
+      try {
+        while (pending.length) {
+          const k = pending[0], r = rec(k);
+          const res = await fetch(url, { method: "POST", body: JSON.stringify({ d: isoOf(k), t: r.t, s: r.s, e: r.e }) });
+          const j = await res.json();
+          if (!j.ok) throw new Error(j.error || "저장 실패");
+          pending.shift(); savePending();
+        }
+        show("ok", "시트에 저장됨 · " + stamp());
+      } catch (e) {
+        show("err", "시트 저장 실패 · 다시 시도할게요");
+      } finally { busy = false; }
+    }
+    async function pull() {
+      if (!url) return;
+      try {
+        const res = await fetch(url);
+        const j = await res.json();
+        if (!j.ok) throw new Error();
+        let changed = false;
+        j.records.forEach((x) => {
+          const k = x.d.replace(/-/g, "");
+          if (pending.includes(k)) return;
+          const r = rec(k);
+          if (r.s !== x.s || r.e !== x.e || r.t !== x.t) {
+            r.s = x.s; r.e = x.e; r.t = x.t;
+            store.set("lt-rec-" + k, JSON.stringify(r)); changed = true;
+          }
+        });
+        if (!pending.length) show("ok", "시트와 맞춤 · " + stamp());
+        return changed;
+      } catch (e) { show("err", "시트를 불러오지 못했어요"); }
+    }
+    return {
+      init() { show(url ? "ok" : "off", url ? "시트 연결됨" : "시트에 연결되지 않았어요"); },
+      url: () => url,
+      setUrl(u) {
+        url = u; store.set("lt-sync", u);
+        // Send everything already recorded in this browser
+        try {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith("lt-rec-") && !pending.includes(key.slice(7))) pending.push(key.slice(7));
+          }
+        } catch (e) {}
+        savePending();
+        show("busy", "연결하는 중…");
+        flush();
+      },
+      queue(k) {
+        if (!pending.includes(k)) pending.push(k);
+        savePending();
+        clearTimeout(timer); timer = setTimeout(flush, 800);
+      },
+      flush, pull,
+    };
+  })();
 
   // Carry over today's entry from the earlier storage format
   (function migrate() {
@@ -480,6 +572,23 @@ button:hover { filter: brightness(.97); }
   renderWeek();
   tick();
   setInterval(tick, 1000);
+
+  sync.init();
+  $("sync-edit").addEventListener("click", () => {
+    const f = $("sync-form");
+    f.hidden = !f.hidden;
+    if (!f.hidden) { $("sync-url").value = sync.url(); $("sync-url").focus(); }
+  });
+  $("sync-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const u = $("sync-url").value.trim();
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) { $("sync-msg").textContent = "…/exec 로 끝나는 웹 앱 URL을 넣어 주세요"; return; }
+    $("sync-form").hidden = true;
+    sync.setUrl(u);
+  });
+  const refresh = () => sync.flush().then(sync.pull).then((changed) => { if (changed) { renderWeek(); tick(); } });
+  refresh();
+  setInterval(refresh, 5 * 60000);
 })();
 </script>
 </body>
