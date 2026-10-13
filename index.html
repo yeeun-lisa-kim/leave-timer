@@ -56,7 +56,6 @@ button, select, input { white-space: nowrap; flex-shrink: 0; }
   .controls { flex-wrap: nowrap; }
   .controls input[type="time"] { flex: 1 1 auto; min-width: 0; flex-shrink: 1; }
 }
-@container (max-width: 240px) { .now-long { display: none; } }
 input[type="time"], select {
   font: 500 .92em var(--font-num); color: var(--fg); background: var(--bg);
   border: 1px solid var(--line); border-radius: 7px; padding: 0 .5em; height: 2.3em;
@@ -109,7 +108,6 @@ button:hover { filter: brightness(.97); }
         <option value="540" selected>9h</option>
         <option value="600">10h</option>
       </select>
-      <button type="button" id="now" aria-label="지금 출근">지금<span class="now-long"> 출근</span></button>
     </div>
   </div>
 
@@ -262,12 +260,6 @@ button:hover { filter: brightness(.97); }
 
   startEl.addEventListener("input", () => { store.set(K.start(), startEl.value); tick(); });
   hoursEl.addEventListener("change", () => { store.set("lt-hours", hoursEl.value); tick(); });
-  $("now").addEventListener("click", () => {
-    startEl.value = hhmm(new Date());
-    store.set(K.start(), startEl.value);
-    store.del(K.ext()); store.del(K.off());
-    tick();
-  });
 
   tick();
   setInterval(tick, 1000);
