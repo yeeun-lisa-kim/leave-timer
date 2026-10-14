@@ -22,6 +22,8 @@
   --bad: #c4453a;
   --bad-soft: #f8e1de;
   --row: #f6f9fb;
+  --warn: #b7791f;
+  --warn-soft: #fbf0d9;
   --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
@@ -30,14 +32,14 @@
   :root:not([data-theme="light"]) {
     --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
     --accent: #6cb6d8; --accent-soft: #1f3540; --good: #5cc497; --good-soft: #1d3329;
-    --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427;
+    --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427; --warn: #e3b05a; --warn-soft: #3a2e1a;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
   --accent: #6cb6d8; --accent-soft: #1f3540; --good: #5cc497; --good-soft: #1d3329;
-  --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427;
+  --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427; --warn: #e3b05a; --warn-soft: #3a2e1a;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -77,7 +79,14 @@ section { display: flex; flex-direction: column; gap: .6em; }
 
 .pill { display: inline-block; font-size: .78em; font-weight: 600; padding: .12em .55em; border-radius: 99px; }
 .pill.ok { color: var(--good); background: var(--good-soft); }
-.pill.fail { color: var(--bad); background: var(--bad-soft); }
+.pill.fail, .pill.error { color: var(--bad); background: var(--bad-soft); }
+.pill.permission, .pill.question { color: var(--warn); background: var(--warn-soft); }
+.pill.working { color: var(--accent); background: var(--accent-soft); }
+.pill.waiting { color: var(--muted); background: var(--track); }
+.item.attn { box-shadow: inset 3px 0 0 var(--warn); padding-left: .7em; }
+.item .r a { display: inline-block; margin-top: .3em; color: var(--accent); font-size: .92em; text-decoration: none; }
+.item .r a:hover { text-decoration: underline; }
+.item .r .dur { display: block; }
 
 /* Chart */
 .chart { position: relative; }
@@ -119,14 +128,19 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   </div>
 
   <div class="stats">
-    <div class="stat"><b id="s-live">–</b><span>지금 작업 중</span></div>
-    <div class="stat"><b id="s-today">–</b><span>오늘 세션</span></div>
+    <div class="stat"><b id="s-open">–</b><span>열린 세션</span></div>
+    <div class="stat"><b id="s-wait">–</b><span>나를 기다리는 중</span></div>
     <div class="stat"><b id="s-tokens">–</b><span>오늘 토큰</span></div>
   </div>
 
   <section>
-    <div class="sec-head"><span class="label">지금 작업 중</span><span class="sub">최근 10분 안에 움직인 세션</span></div>
-    <div class="list live" id="live"></div>
+    <div class="sec-head"><span class="label">열린 세션</span><span class="sub">나를 기다리는 세션이 위로 와요</span></div>
+    <div class="list" id="open"></div>
+  </section>
+
+  <section id="stale-sec" hidden>
+    <div class="sec-head"><span class="label">정리해도 될 세션</span><span class="sub">하루 넘게 입력을 기다리는 중</span></div>
+    <div class="list" id="stale"></div>
   </section>
 
   <section>
@@ -154,7 +168,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   };
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const compact = new Intl.NumberFormat("ko", { notation: "compact", maximumFractionDigits: 1 });
-  const LIVE_MIN = 10;
+  const STALE_H = 24;
+  const STATUS = {
+    permission: ["승인 필요", 0], question: ["질문 대기", 1], error: ["오류", 2],
+    waiting: ["입력 대기", 3], working: ["작업 중", 4],
+  };
   let data = null, showAll = false;
 
   function ago(iso) {
@@ -167,10 +185,26 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   }
   const kstDay = (d) => new Date(d.getTime() + 9 * 3600000).toISOString().slice(0, 10);
 
-  function sessionRow(s, live) {
-    return '<div class="item"><span class="t">' + (live ? '<span class="dot"></span>' : "") + esc(s.title) + "</span>" +
+  function dur(iso) {
+    const m = Math.max(0, Math.round((Date.now() - new Date(iso)) / 60000));
+    if (m < 60) return m + "분";
+    const h = Math.floor(m / 60);
+    return h < 24 ? h + "시간 " + (m % 60) + "분" : Math.floor(h / 24) + "일 " + (h % 24) + "시간";
+  }
+  function sessionRow(s) {
+    return '<div class="item"><span class="t">' + esc(s.title) + "</span>" +
       '<span class="m">' + esc(s.project) + " · " + s.turns + "턴 · " + compact.format(s.tokens) + " 토큰</span>" +
-      '<span class="r">' + (live ? "활동 " + ago(s.last) : ago(s.last)) + "</span></div>";
+      '<span class="r">' + ago(s.last) + "</span></div>";
+  }
+  function openRow(s) {
+    const L = s.live, st = STATUS[L.status] || STATUS.waiting;
+    const attn = ["permission", "question", "error"].includes(L.status);
+    const what = L.status === "working" ? "째 작업" : "째 대기";
+    // vscode:// opens (or focuses) the window for that folder; the session tab itself can't be targeted
+    const link = L.cwd ? '<a href="vscode://file' + encodeURI(L.cwd) + '" target="_blank" rel="noopener">열기 ↗</a>' : "";
+    return '<div class="item' + (attn ? " attn" : "") + '"><span class="t"><span class="pill ' + esc(L.status) + '">' + st[0] + "</span> " + esc(s.title) + "</span>" +
+      '<span class="m">' + esc(s.project) + " · " + s.turns + "턴 · " + compact.format(s.tokens) + " 토큰</span>" +
+      '<span class="r"><span class="dur">' + dur(L.since) + what + "</span>" + link + "</span></div>";
   }
 
   function render() {
@@ -178,18 +212,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     const snap = data.snapshot || { sessions: [], usage: [] };
     const sessions = snap.sessions || [];
     const now = Date.now();
-    const live = sessions.filter((s) => now - new Date(s.last) < LIVE_MIN * 60000);
+    const open = sessions.filter((s) => s.live);
+    const isStale = (s) => s.live.status === "waiting" && now - new Date(s.live.since) > STALE_H * 3600000;
+    const active = open.filter((s) => !isStale(s))
+      .sort((a, b) => (STATUS[a.live.status] || STATUS.waiting)[1] - (STATUS[b.live.status] || STATUS.waiting)[1] || new Date(a.live.since) - new Date(b.live.since));
+    const stale = open.filter(isStale).sort((a, b) => new Date(a.live.since) - new Date(b.live.since));
     const today = kstDay(new Date());
     const todayUse = (snap.usage || []).find((u) => u.date === today);
 
     $("updated").textContent = snap.generatedAt ? "기록 갱신 " + ago(snap.generatedAt) : "아직 받은 기록이 없어요";
-    $("s-live").textContent = live.length;
-    $("s-today").textContent = sessions.filter((s) => kstDay(new Date(s.last)) === today).length;
+    $("s-open").textContent = open.length;
+    $("s-wait").textContent = open.filter((s) => ["permission", "question", "error"].includes(s.live.status)).length;
     $("s-tokens").textContent = todayUse ? compact.format(todayUse.input + todayUse.output + todayUse.cacheRead + todayUse.cacheWrite) : "0";
 
-    $("live").innerHTML = live.length ? live.map((s) => sessionRow(s, true)).join("") : '<div class="empty">지금 돌고 있는 세션이 없어요</div>';
-    const rest = sessions.filter((s) => !live.includes(s));
-    $("recent").innerHTML = rest.length ? rest.slice(0, showAll ? 30 : 8).map((s) => sessionRow(s, false)).join("") : '<div class="empty">최근 세션이 없어요</div>';
+    $("open").innerHTML = active.length ? active.map(openRow).join("") : '<div class="empty">열린 세션이 없어요. 세션을 새로 열거나 메시지를 보내면 여기에 나타나요</div>';
+    $("stale-sec").hidden = !stale.length;
+    $("stale").innerHTML = stale.map(openRow).join("");
+    const rest = sessions.filter((s) => !s.live);
+    $("recent").innerHTML = rest.length ? rest.slice(0, showAll ? 30 : 8).map(sessionRow).join("") : '<div class="empty">최근 세션이 없어요</div>';
     $("more").hidden = rest.length <= 8;
     $("more").textContent = showAll ? "접기" : "더 보기";
 
@@ -279,7 +319,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   });
 
   load();
-  setInterval(load, 60000);
+  setInterval(load, 30000);
   setInterval(render, 30000);
 })();
 </script>
