@@ -169,6 +169,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const compact = new Intl.NumberFormat("ko", { notation: "compact", maximumFractionDigits: 1 });
   const STALE_H = 24;
+  const HELPER = "http://127.0.0.1:47391";
   const STATUS = {
     permission: ["승인 필요", 0], question: ["질문 대기", 1], error: ["오류", 2],
     waiting: ["입력 대기", 3], working: ["작업 중", 4],
@@ -200,8 +201,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
     const L = s.live, st = STATUS[L.status] || STATUS.waiting;
     const attn = ["permission", "question", "error"].includes(L.status);
     const what = L.status === "working" ? "째 작업" : "째 대기";
-    // vscode:// opens (or focuses) the window for that folder; the session tab itself can't be targeted
-    const link = L.cwd ? '<a href="vscode://file' + encodeURI(L.cwd) + '" target="_blank" rel="noopener">열기 ↗</a>' : "";
+    // The local helper (focus_server.py) reveals that Claude tab in its VS Code window
+    const link = '<a href="' + HELPER + "/focus?sid=" + encodeURIComponent(s.id) + '" data-sid="' + esc(s.id) + '" target="_blank" rel="noopener">열기 ↗</a>';
     return '<div class="item' + (attn ? " attn" : "") + '"><span class="t"><span class="pill ' + esc(L.status) + '">' + st[0] + "</span> " + esc(s.title) + "</span>" +
       '<span class="m">' + esc(s.project) + " · " + s.turns + "턴 · " + compact.format(s.tokens) + " 토큰</span>" +
       '<span class="r"><span class="dur">' + dur(L.since) + what + "</span>" + link + "</span></div>";
@@ -309,6 +310,24 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 
   let rz = 0;
   window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 150); });
+  // Ask the helper directly; if Notion blocks the request, fall back to opening the helper link in a browser tab
+  document.addEventListener("click", async (e) => {
+    const a = e.target.closest("a[data-sid]");
+    if (!a) return;
+    e.preventDefault();
+    const old = a.textContent;
+    a.textContent = "여는 중…";
+    try {
+      const ctl = new AbortController();
+      setTimeout(() => ctl.abort(), 2000);
+      const j = await (await fetch(a.href, { headers: { Accept: "application/json" }, signal: ctl.signal })).json();
+      a.textContent = j.ok ? "열었어요" : j.message;
+    } catch (err) {
+      window.open(a.href, "_blank", "noopener");
+      a.textContent = old;
+    }
+    setTimeout(() => { a.textContent = old; }, 2500);
+  });
   $("more").addEventListener("click", () => { showAll = !showAll; render(); });
   $("cform").addEventListener("submit", (e) => {
     e.preventDefault();
