@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Claude 세션 모니터</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* Layout: one column for a Notion embed — summary numbers, live sessions, routine status, 14-day usage bars, recent sessions */
+:root {
+  --bg: #ffffff;
+  --fg: #23303a;
+  --muted: #7d8b96;
+  --line: #e3eaef;
+  --track: #edf2f6;
+  --accent: #3f8fb5;
+  --accent-soft: #d9ecf5;
+  --good: #2f9e6e;
+  --good-soft: #ddf2e8;
+  --bad: #c4453a;
+  --bad-soft: #f8e1de;
+  --row: #f6f9fb;
+  --font-body: "IBM Plex Sans KR", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --font-num: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
+    --accent: #6cb6d8; --accent-soft: #1f3540; --good: #5cc497; --good-soft: #1d3329;
+    --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #191919; --fg: #e4eaee; --muted: #8b979f; --line: #2c3236; --track: #262c30;
+  --accent: #6cb6d8; --accent-soft: #1f3540; --good: #5cc497; --good-soft: #1d3329;
+  --bad: #e2786e; --bad-soft: #3b2220; --row: #1f2427;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: clamp(13px, 3.4vw, 14.5px);
+  padding: 16px 20px;
+}
+.wrap { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 1.4em; }
+.label { font-size: .85em; font-weight: 600; letter-spacing: .06em; color: var(--muted); }
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+section { display: flex; flex-direction: column; gap: .6em; }
+.sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sub { font-size: .85em; color: var(--muted); }
+
+/* Summary */
+.top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--row); border-radius: 8px; padding: .7em .8em; min-width: 0; }
+.stat b { display: block; font: 500 1.6em var(--font-num); line-height: 1.15; }
+.stat span { font-size: .82em; color: var(--muted); }
+
+/* Lists */
+.list { display: flex; flex-direction: column; }
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: .55em 0; border-top: 1px solid var(--line); }
+.item:first-child { border-top: 0; }
+.item .t { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.item .m { grid-column: 1; font-size: .82em; color: var(--muted); }
+.item .r { grid-row: 1 / span 2; grid-column: 2; align-self: center; text-align: right; font-size: .85em; color: var(--muted); white-space: nowrap; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; vertical-align: .1em; }
+.live .dot { animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .live .dot { animation: none; } }
+.empty { color: var(--muted); font-size: .9em; padding: .3em 0; }
+
+.pill { display: inline-block; font-size: .78em; font-weight: 600; padding: .12em .55em; border-radius: 99px; }
+.pill.ok { color: var(--good); background: var(--good-soft); }
+.pill.fail { color: var(--bad); background: var(--bad-soft); }
+
+/* Chart */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: 150px; overflow: visible; }
+.chart .bar { fill: var(--accent); }
+.chart .bar.today { fill: var(--accent); opacity: 1; }
+.chart .bar.dim { opacity: .45; }
+.chart .hit { fill: transparent; cursor: default; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart text { fill: var(--muted); font: 10px var(--font-num); }
+.tip {
+  position: absolute; pointer-events: none; background: var(--fg); color: var(--bg);
+  font-size: 12px; line-height: 1.5; padding: .45em .65em; border-radius: 6px; white-space: nowrap;
+  transform: translate(-50%, -100%); top: 0;
+}
+.tip .num { color: var(--bg); }
+
+button {
+  font: 500 .9em var(--font-body); color: var(--muted); background: transparent;
+  border: 1px solid var(--line); border-radius: 7px; padding: 0 .7em; height: 2em; cursor: pointer;
+}
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.connect { display: flex; flex-direction: column; gap: .5em; }
+.connect form { display: flex; gap: 6px; }
+.connect input { flex: 1; min-width: 0; font: .85em var(--font-body); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 0 .5em; height: 2.3em; }
+.err { color: var(--bad); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="top">
+    <span class="label">CLAUDE CODE 세션</span>
+    <span class="sub" id="updated">불러오는 중…</span>
+  </div>
+
+  <div class="connect" id="connect" hidden>
+    <div class="empty">출퇴근 기록 시트의 Apps Script 웹 앱 URL을 넣으면 세션 기록을 불러와요.</div>
+    <form id="cform"><input type="url" id="curl" placeholder="https://script.google.com/…/exec" aria-label="Apps Script 웹 앱 URL"><button type="submit">연결</button></form>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><b id="s-live">–</b><span>지금 작업 중</span></div>
+    <div class="stat"><b id="s-today">–</b><span>오늘 세션</span></div>
+    <div class="stat"><b id="s-tokens">–</b><span>오늘 토큰</span></div>
+  </div>
+
+  <section>
+    <div class="sec-head"><span class="label">지금 작업 중</span><span class="sub">최근 10분 안에 움직인 세션</span></div>
+    <div class="list live" id="live"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="label">정기 실행</span></div>
+    <div class="list" id="runs"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="label">최근 14일 토큰 사용량</span><span class="sub">입력 + 캐시 + 출력</span></div>
+    <div class="chart" id="chart"></div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="label">최근 세션</span><button type="button" id="more">더 보기</button></div>
+    <div class="list" id="recent"></div>
+  </section>
+</main>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const compact = new Intl.NumberFormat("ko", { notation: "compact", maximumFractionDigits: 1 });
+  const LIVE_MIN = 10;
+  let data = null, showAll = false;
+
+  function ago(iso) {
+    const m = Math.round((Date.now() - new Date(iso)) / 60000);
+    if (m < 1) return "방금";
+    if (m < 60) return m + "분 전";
+    const h = Math.floor(m / 60);
+    if (h < 24) return h + "시간 전";
+    return Math.floor(h / 24) + "일 전";
+  }
+  const kstDay = (d) => new Date(d.getTime() + 9 * 3600000).toISOString().slice(0, 10);
+
+  function sessionRow(s, live) {
+    return '<div class="item"><span class="t">' + (live ? '<span class="dot"></span>' : "") + esc(s.title) + "</span>" +
+      '<span class="m">' + esc(s.project) + " · " + s.turns + "턴 · " + compact.format(s.tokens) + " 토큰</span>" +
+      '<span class="r">' + (live ? "활동 " + ago(s.last) : ago(s.last)) + "</span></div>";
+  }
+
+  function render() {
+    if (!data) return;
+    const snap = data.snapshot || { sessions: [], usage: [] };
+    const sessions = snap.sessions || [];
+    const now = Date.now();
+    const live = sessions.filter((s) => now - new Date(s.last) < LIVE_MIN * 60000);
+    const today = kstDay(new Date());
+    const todayUse = (snap.usage || []).find((u) => u.date === today);
+
+    $("updated").textContent = snap.generatedAt ? "기록 갱신 " + ago(snap.generatedAt) : "아직 받은 기록이 없어요";
+    $("s-live").textContent = live.length;
+    $("s-today").textContent = sessions.filter((s) => kstDay(new Date(s.last)) === today).length;
+    $("s-tokens").textContent = todayUse ? compact.format(todayUse.input + todayUse.output + todayUse.cacheRead + todayUse.cacheWrite) : "0";
+
+    $("live").innerHTML = live.length ? live.map((s) => sessionRow(s, true)).join("") : '<div class="empty">지금 돌고 있는 세션이 없어요</div>';
+    const rest = sessions.filter((s) => !live.includes(s));
+    $("recent").innerHTML = rest.length ? rest.slice(0, showAll ? 30 : 8).map((s) => sessionRow(s, false)).join("") : '<div class="empty">최근 세션이 없어요</div>';
+    $("more").hidden = rest.length <= 8;
+    $("more").textContent = showAll ? "접기" : "더 보기";
+
+    // Latest run per routine
+    const last = {};
+    (data.runs || []).forEach((r) => { last[r.name] = r; });
+    const names = Object.keys(last);
+    $("runs").innerHTML = names.length ? names.map((n) => {
+      const r = last[n], ok = r.status === "성공";
+      return '<div class="item"><span class="t">' + esc(n) + "</span>" +
+        '<span class="m">' + esc(r.at) + " · " + esc(r.summary) + "</span>" +
+        '<span class="r"><span class="pill ' + (ok ? "ok" : "fail") + '">' + (ok ? "✓ 성공" : "✕ 실패") + "</span></span></div>";
+    }).join("") : '<div class="empty">아직 기록된 실행이 없어요. 다음 정기 실행부터 여기에 쌓여요</div>';
+
+    drawChart(snap.usage || [], today);
+  }
+
+  function drawChart(usage, today) {
+    const el = $("chart");
+    if (!usage.length) { el.innerHTML = '<div class="empty">사용량 기록이 없어요</div>'; return; }
+    const W = Math.max(260, el.clientWidth || 600), H = 150, top = 8, bottom = 22, left = 34;
+    const vals = usage.map((u) => u.input + u.output + u.cacheRead + u.cacheWrite);
+    const max = Math.max(...vals, 1);
+    // Round the scale up to a readable step
+    const pow = Math.pow(10, Math.floor(Math.log10(max)));
+    const stepMax = Math.ceil(max / pow) * pow;
+    const plotH = H - top - bottom, bw = (W - left) / usage.length;
+    // Date labels counted back from today, spaced so they never overlap
+    const every = Math.max(1, Math.ceil(44 / bw));
+    let svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="최근 14일 일별 토큰 사용량">';
+    [0, .5, 1].forEach((f) => {
+      const y = top + plotH * (1 - f);
+      svg += '<line class="grid" x1="' + left + '" x2="' + W + '" y1="' + y + '" y2="' + y + '"/>';
+      svg += '<text x="' + (left - 6) + '" y="' + (y + 3) + '" text-anchor="end">' + compact.format(stepMax * f) + "</text>";
+    });
+    usage.forEach((u, i) => {
+      const v = vals[i], h = v ? Math.max(2, plotH * v / stepMax) : 0;
+      const x = left + i * bw + 2, w = Math.max(2, bw - 4), y = top + plotH - h;
+      const r = Math.min(4, w / 2, h);
+      if (h) svg += '<path class="bar' + (u.date === today ? " today" : " dim") + '" d="M' + x + "," + (top + plotH) + "V" + (y + r) +
+        "Q" + x + "," + y + " " + (x + r) + "," + y + "H" + (x + w - r) + "Q" + (x + w) + "," + y + " " + (x + w) + "," + (y + r) + "V" + (top + plotH) + 'Z"/>';
+      svg += '<rect class="hit" data-i="' + i + '" x="' + (left + i * bw) + '" y="' + top + '" width="' + bw + '" height="' + plotH + '"/>';
+      if ((usage.length - 1 - i) % every === 0) {
+        svg += '<text x="' + (left + i * bw + bw / 2) + '" y="' + (H - 6) + '" text-anchor="middle">' + u.date.slice(5).replace("-", "/") + "</text>";
+      }
+    });
+    svg += "</svg>";
+    el.innerHTML = svg + '<div class="tip" id="tip" hidden></div>';
+
+    const tip = $("tip");
+    el.querySelectorAll(".hit").forEach((h) => {
+      h.addEventListener("mouseenter", () => {
+        const i = +h.dataset.i, u = usage[i];
+        tip.innerHTML = "<b>" + u.date.slice(5).replace("-", "/") + "</b> · 세션 " + u.sessions + "<br>" +
+          "합계 <span class=\"num\">" + compact.format(vals[i]) + "</span> · 출력 <span class=\"num\">" + compact.format(u.output) + "</span>";
+        const rect = h.getBoundingClientRect(), box = el.getBoundingClientRect();
+        tip.style.left = Math.min(Math.max(rect.left - box.left + rect.width / 2, 70), box.width - 70) + "px";
+        tip.hidden = false;
+      });
+      h.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+  }
+
+  async function load() {
+    const url = store.get("lt-sync");
+    $("connect").hidden = !!url;
+    if (!url) { $("updated").textContent = "연결 필요"; return; }
+    try {
+      const j = await (await fetch(url + "?action=claude")).json();
+      if (!j.ok) throw new Error();
+      data = j;
+      render();
+    } catch (e) {
+      $("updated").innerHTML = '<span class="err">불러오지 못했어요. Apps Script를 새 버전으로 배포했는지 확인해 주세요</span>';
+    }
+  }
+
+  let rz = 0;
+  window.addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(render, 150); });
+  $("more").addEventListener("click", () => { showAll = !showAll; render(); });
+  $("cform").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const u = $("curl").value.trim();
+    if (!/^https:\/\/script\.google\.com\/.+\/exec$/.test(u)) { $("curl").value = ""; $("curl").placeholder = "…/exec 로 끝나는 URL을 넣어 주세요"; return; }
+    store.set("lt-sync", u);
+    load();
+  });
+
+  load();
+  setInterval(load, 60000);
+  setInterval(render, 30000);
+})();
+</script>
+</body>
+</html>

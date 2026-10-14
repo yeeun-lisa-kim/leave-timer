@@ -34,10 +34,35 @@ function events_() {
   return json_({ ok: true, events });
 }
 
+// Claude 세션 대시보드: 로컬 수집 스크립트가 보낸 요약을 'claude-data' 탭 A1에 JSON으로 보관한다
+const CLAUDE_TAB = 'claude-data';
+const ROUTINE_TAB = '정기 실행';
+
+function saveClaude_(r) {
+  const ss = SpreadsheetApp.getActive();
+  const sh = ss.getSheetByName(CLAUDE_TAB) || ss.insertSheet(CLAUDE_TAB);
+  sh.getRange(1, 1).setValue(JSON.stringify({ generatedAt: r.generatedAt, sessions: r.sessions, usage: r.usage }));
+  return json_({ ok: true });
+}
+
+// 세션 요약 + '정기 실행' 탭의 루틴별 최근 기록을 함께 돌려준다
+function claude_() {
+  const ss = SpreadsheetApp.getActive();
+  const data = ss.getSheetByName(CLAUDE_TAB);
+  let snapshot = null;
+  try { snapshot = data ? JSON.parse(data.getRange(1, 1).getValue()) : null; } catch (err) {}
+  const log = ss.getSheetByName(ROUTINE_TAB);
+  const n = log ? log.getLastRow() - 1 : 0;
+  const runs = n > 0 ? log.getRange(2, 1, n, 4).getDisplayValues()
+    .filter((x) => x[0]).map((x) => ({ at: x[0], name: x[1], status: x[2], summary: x[3] })) : [];
+  return json_({ ok: true, snapshot, runs: runs.slice(-50) });
+}
+
 // 기본: 전체 기록을 돌려준다 [{d: "2026-10-13", t: "work", s: "09:30", e: "18:40"}, ...]
-// ?action=events: 오늘 캘린더 일정
+// ?action=events: 오늘 캘린더 일정 / ?action=claude: Claude 세션 대시보드 데이터
 function doGet(e) {
   if (e && e.parameter && e.parameter.action === 'events') return events_();
+  if (e && e.parameter && e.parameter.action === 'claude') return claude_();
   const sh = sheet_();
   const n = sh.getLastRow() - 1;
   const rows = n > 0 ? sh.getRange(2, 1, n, 5).getDisplayValues() : [];
@@ -50,6 +75,7 @@ function doGet(e) {
 // 하루치 기록을 날짜 기준으로 추가하거나 고친다. 출근·퇴근이 모두 비어 있는 근무일은 행을 지운다.
 function doPost(e) {
   const r = JSON.parse(e.postData.contents);
+  if (r.action === 'claude') return saveClaude_(r);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(r.d || '')) return json_({ ok: false, error: '날짜 형식이 잘못됐어요' });
   const t = TYPES[r.t] ? r.t : 'work';
   const s = /^\d{2}:\d{2}$/.test(r.s || '') ? r.s : '';
