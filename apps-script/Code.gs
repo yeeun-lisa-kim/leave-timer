@@ -72,6 +72,32 @@ function doGet(e) {
   return json_({ ok: true, records });
 }
 
+// 오늘 퇴근이 찍히면 '업무 일지 자동 초안' 루틴을 API 트리거로 실행한다.
+// 스크립트 속성 FIRE_URL, FIRE_TOKEN 에 루틴의 API 트리거 URL과 토큰을 넣어 둔다 (코드에는 두지 않는다).
+// 퇴근 취소 후 다시 퇴근하는 경우를 위해 20분이 지나면 다시 실행할 수 있다. 루틴은 같은 내용을 두 번 넣지 않는다.
+function fireWorkLog_(day, start, end) {
+  const today = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd');
+  if (day !== today) return;
+  const props = PropertiesService.getScriptProperties();
+  const url = props.getProperty('FIRE_URL');
+  const token = props.getProperty('FIRE_TOKEN');
+  if (!url || !token) return;
+  const last = Number(props.getProperty('LAST_FIRE') || 0);
+  if (Date.now() - last < 20 * 60 * 1000) return;
+  props.setProperty('LAST_FIRE', String(Date.now()));
+  UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'anthropic-beta': 'experimental-cc-routine-2026-04-01',
+      'anthropic-version': '2023-06-01',
+    },
+    payload: JSON.stringify({ text: '퇴근 기록: ' + day + ' ' + start + '~' + end }),
+    muteHttpExceptions: true,
+  });
+}
+
 // 하루치 기록을 날짜 기준으로 추가하거나 고친다. 출근·퇴근이 모두 비어 있는 근무일은 행을 지운다.
 function doPost(e) {
   const r = JSON.parse(e.postData.contents);
@@ -106,6 +132,7 @@ function doPost(e) {
 
     sh.getRange(row, 1).setValue(r.d);
     sh.getRange(row, 3, 1, 3).setValues([[TYPES[t], s, end]]);
+    if (end) fireWorkLog_(r.d, s, end);
     return json_({ ok: true });
   } finally {
     lock.releaseLock();
